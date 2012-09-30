@@ -36,6 +36,10 @@ var (
 	allPlayers = []string{"Asticot", "ChuckMaurice", "Posi", "Lagoule"}
 )
 
+func toString(day int) string {
+	return weekdays[day]
+}
+
 func init() {
 	http.HandleFunc("/", root)
 	http.HandleFunc("/week/", serveWeek)
@@ -69,11 +73,11 @@ type Week struct {
 	Schedule []string
 }
 
+// TODO: instead of DTS add a func daytostring to the funcmaps
 type tplWeek struct {
 	W Week
 	Players []string
 	Foo map[string]map[int]bool
-	DTS map[int]string
 }
 
 func newWeek(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +92,6 @@ func newWeek(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	dts := map[int]string{0:"monday",1:"tuesday",2:"wednesday",3:"thursday"}
 	foo := map[string]map[int]bool{
 		"Jo": map[int]bool{monday: false, tuesday:true},
 		"moi": map[int]bool{wednesday: true, thursday: false},
@@ -129,7 +132,7 @@ func serveWeek(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tWeek := tplWeek{week, allPlayers, nil, nil}
+	tWeek := tplWeek{week, allPlayers, nil}
 	w.Header().Set("Content-Type", "text/html")
 	if err := weekTemplate.Execute(w, tWeek); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
