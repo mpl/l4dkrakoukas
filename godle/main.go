@@ -13,10 +13,33 @@ import (
 	"path"
 )
 
+// TODO: do it with bitfields?
+const (
+	monday = iota
+	tuesday = iota
+	wednesday = iota
+	thursday = iota
+	friday = iota
+	saturday = iota
+	sunday = iota
+)
+
+const (
+	Asticot = iota
+	ChuckMaurice = iota
+	Posi = iota
+	Lagoule = iota
+)
+
+var (
+	weekdays = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+	allPlayers = []string{"Asticot", "ChuckMaurice", "Posi", "Lagoule"}
+)
+
 func init() {
 	http.HandleFunc("/", root)
 	http.HandleFunc("/week/", serveWeek)
-	http.HandleFunc("/newweek/", newWeek)
+	http.HandleFunc("/newweek", newWeek)
 /*
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/logout", logout)
@@ -42,28 +65,73 @@ func root(w http.ResponseWriter, r *http.Request) {
 }
 
 type Week struct {
-	id string
 	Date string
+	Schedule []string
+}
+
+type tplWeek struct {
+	W Week
+	Players []string
+	Foo map[string]map[int]bool
+	DTS map[int]string
 }
 
 func newWeek(w http.ResponseWriter, r *http.Request) {
+	var err error
+	weekId := "20120930"
+	initialPlayers := []string{"sunday", "friday saturday", "", ""}
+	week := Week{Date: weekId, Schedule: initialPlayers}
+	c := appengine.NewContext(r)
+	k := datastore.NewKey(c, "week", weekId, 0, nil)
+	_, err = datastore.Put(c, k, &week)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dts := map[int]string{0:"monday",1:"tuesday",2:"wednesday",3:"thursday"}
+	foo := map[string]map[int]bool{
+		"Jo": map[int]bool{monday: false, tuesday:true},
+		"moi": map[int]bool{wednesday: true, thursday: false},
+	}
+	tWeek := tplWeek{week, allPlayers, foo, dts}
 	w.Header().Set("Content-Type", "text/html")
-	if err := weekTemplate.Execute(w, Week{id: "dasid", Date: "today"}); err != nil {
+	if err := weekTemplate.Execute(w, tWeek); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func serveWeek(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
+	var err error
 	_, weekId := path.Split(r.URL.String())
-	k := datastore.NewKey(c, "weekId", weekId, 0, nil)
+	println(weekId)
+	if weekId == "" {
+		http.Error(w, "No week Id", http.StatusInternalServerError)
+		return
+	}
+	c := appengine.NewContext(r)
+	k := datastore.NewKey(c, "week", weekId, 0, nil)
 	week := Week{}
 	if err := datastore.Get(c, k, &week); err != nil {
 		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	for k, v := range allPlayers {
+		days := r.FormValue(v+"days")
+		if days != "" {
+			println(days)
+			week.Schedule[k] = days
+		}
+	}
+	
+	_, err = datastore.Put(c, k, &week)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tWeek := tplWeek{week, allPlayers, nil, nil}
 	w.Header().Set("Content-Type", "text/html")
-	if err := weekTemplate.Execute(w, Week{id: "dasid", Date: "today"}); err != nil {
+	if err := weekTemplate.Execute(w, tWeek); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

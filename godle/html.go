@@ -27,36 +27,37 @@ const weekHTML = `
 	<title>l4dkrakoukas</title>
 </head>
 <body>
-Planning pour semaine {{.Date}}
-<form name="weekinput" action="week" method="get">
+Planning pour semaine {{.W.Date}}
+<form name="weekinput" action="/week/{{.W.Date}}" method="post">
 <table>
+	{{with $dts := .DTS}}
+	{{range $player, $schedule := .Foo}}
 	<tr>
-		<th>Ptits Joueurs</th>
-		<th>Vendredi</th>
-		<th>Samedi</th>
-		<th>Dimanche</th>
+		<td> {{$player}} </td>
+		{{range $day, $avail := $schedule}}
+		<td>
+			<input type="checkbox" name={{$player}}day value={{$day}}
+			{{if $avail}} checked="true" {{end}}
+			>
+		</td>
+		{{end}}
 	</tr>
-	<tr>
-		<td>Asticot</td>
-		<td><input type="checkbox" name="asticotday" value="friday"></td>
-		<td><input type="checkbox" name="asticotday" value="saturday"></td>
-		<td><input type="checkbox" name="asticotday" value="sunday"></td>
-	</tr>
-	<tr>
-		<td>ChuckMaurice</td>
-		<td><input type="checkbox" name="chuckmauriceday" value="friday"></td>
-		<td><input type="checkbox" name="chuckmauriceday" value="saturday"></td>
-		<td><input type="checkbox" name="chuckmauriceday" value="sunday"></td>
-	</tr>
-	<tr>
-		<td>Posi</td>
-	</tr>
-	<tr>
-		<td>Lagoule</td>
-	</tr>
+	{{end}}
+	{{end}}
 </table>
 <input type="submit" value="Save">
 </form>
 </body>
 </html>
 `
+
+/*
+	{{end}}
+	<tr>
+		<th>Ptits Joueurs</th>
+		<th>Vendredi</th>
+		<th>Samedi</th>
+		<th>Dimanche</th>
+	</tr>
+		<td><input type="checkbox" name="fooday" value={{.}}></td>
+*/
