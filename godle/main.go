@@ -55,7 +55,7 @@ func toString(day int) string {
 }
 
 func prettyDate(date string) string {
-	return date[0:3] + ", " + date[4:5]
+	return date[0:4] + ", " + date[4:6]
 }
 
 
