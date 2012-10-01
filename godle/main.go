@@ -6,11 +6,14 @@ import (
 	"appengine/datastore"
 //	"appengine/user"
 //	"crypto/md5"
-//	"fmt"
+	"fmt"
 //	"html/template"
 	"io"
 	"net/http"
 	"path"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // TODO: do it with bitfields?
@@ -31,14 +34,30 @@ const (
 	Lagoule = iota
 )
 
+const defaultMaxMemory = 32 << 20 // 32 MB
+
 var (
 	weekdays = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
 	allPlayers = []string{"Asticot", "ChuckMaurice", "Posi", "Lagoule"}
+	allFalse = map[int]bool{
+		monday: false,
+		tuesday: false,
+		wednesday: false,
+		thursday: false,
+		friday: false,
+		saturday: false,
+		sunday: false,
+	}
 )
 
 func toString(day int) string {
 	return weekdays[day]
 }
+
+func prettyDate(date string) string {
+	return date[0:3] + ", " + date[4:5]
+}
+
 
 func init() {
 	http.HandleFunc("/", root)
@@ -47,10 +66,6 @@ func init() {
 /*
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/logout", logout)
-	http.HandleFunc("/pic/", pic)
-	http.HandleFunc("/serve/", serve)
-	http.HandleFunc("/upload", upload)
-	http.HandleFunc("/pics", allPics)
 */
 }
 
@@ -68,35 +83,38 @@ func root(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// TODO: the Schedule in this one could probably be a big JSON string
+// derived from the Schedule in tplWeek
 type Week struct {
 	Date string
 	Schedule []string
 }
 
-// TODO: instead of DTS add a func daytostring to the funcmaps
 type tplWeek struct {
-	W Week
-	Players []string
-	Foo map[string]map[int]bool
+	Date string
+	Schedule map[string]map[int]bool
 }
 
 func newWeek(w http.ResponseWriter, r *http.Request) {
-	var err error
-	weekId := "20120930"
-	initialPlayers := []string{"sunday", "friday saturday", "", ""}
-	week := Week{Date: weekId, Schedule: initialPlayers}
+	year, weeknb := time.Now().ISOWeek()
+	weekId := fmt.Sprintf("%d%d", year, weeknb)
+	emptySchedule := []string{}
+	avail := map[string]map[int]bool{}
+	for _, p := range allPlayers {
+		emptySchedule = append(emptySchedule, "")
+		avail[p] = allFalse
+	}
+	week := Week{Date: weekId, Schedule: emptySchedule}
+	tWeek := tplWeek{weekId, avail}
+
 	c := appengine.NewContext(r)
-	k := datastore.NewKey(c, "week", weekId, 0, nil)
-	_, err = datastore.Put(c, k, &week)
+	key := datastore.NewKey(c, "week", weekId, 0, nil)
+	_, err := datastore.Put(c, key, &week)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	foo := map[string]map[int]bool{
-		"Jo": map[int]bool{monday: false, tuesday:true},
-		"moi": map[int]bool{wednesday: true, thursday: false},
-	}
-	tWeek := tplWeek{week, allPlayers, foo, dts}
+
 	w.Header().Set("Content-Type", "text/html")
 	if err := weekTemplate.Execute(w, tWeek); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -104,35 +122,53 @@ func newWeek(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveWeek(w http.ResponseWriter, r *http.Request) {
-	var err error
 	_, weekId := path.Split(r.URL.String())
-	println(weekId)
+//	println(weekId)
 	if weekId == "" {
 		http.Error(w, "No week Id", http.StatusInternalServerError)
 		return
 	}
 	c := appengine.NewContext(r)
-	k := datastore.NewKey(c, "week", weekId, 0, nil)
+	key := datastore.NewKey(c, "week", weekId, 0, nil)
 	week := Week{}
-	if err := datastore.Get(c, k, &week); err != nil {
-		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
+	if err := datastore.Get(c, key, &week); err != nil {
+		// TODO: log this?
+//		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Invalid week Id", http.StatusInternalServerError)
 		return
 	}
 	for k, v := range allPlayers {
-		days := r.FormValue(v+"days")
-		if days != "" {
-			println(days)
-			week.Schedule[k] = days
+		if r.Form == nil {
+			r.ParseMultipartForm(defaultMaxMemory)
+		}
+		days := r.Form[v+"days"]
+		if len(days) > 0 {
+			week.Schedule[k] = strings.Join(days, " ")
 		}
 	}
-	
-	_, err = datastore.Put(c, k, &week)
+	_, err := datastore.Put(c, key, &week)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	tWeek := tplWeek{week, allPlayers, nil}
+	avail := map[string]map[int]bool{}
+	for k, p := range allPlayers {
+		days := strings.Fields(week.Schedule[k])
+		okDays := map[int]bool{}
+		for i:=0; i<7; i++ {
+			okDays[i] = false
+		}
+		for _, sd := range days {
+			dd, err := strconv.Atoi(sd)
+			if err != nil {
+				panic(err)
+			}
+			okDays[dd] = true
+		}
+		avail[p] = okDays
+	}
+	tWeek := tplWeek{weekId, avail}
 	w.Header().Set("Content-Type", "text/html")
 	if err := weekTemplate.Execute(w, tWeek); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -181,160 +217,6 @@ func logout(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/logout" {
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
-}
-
-
-func serve(w http.ResponseWriter, r *http.Request) {
-	blobstore.Send(w, appengine.BlobKey(r.FormValue("blobKey")))
-}
-
-var picTemplate = template.Must(template.New("pic").Parse(picHTML))
-
-const picHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-	<title>ImgDump</title>
-</head>
-<body>
-	{{ if .Anon }}<div> Log in to upload or list your previous uploads </div>{{ end }}
-	<div> <a href="/">home</a> <a href="/login">login</a> <a href="/logout">logout</a> </div>
-	<div><img src="/serve/?blobKey={{.PicKey}}" alt="{{.PicKey}}"/></div>
-	{{ if not .Anon }}
-	<div><a href="/pics">list</a></div>
-	<form action="{{.Upload}}" method="post" enctype="multipart/form-data">
-	<div><input type="file" name="file"></div>
-	<div><input type="submit" value="upload"></div>
-    </form>
-	{{ end }}
-</body>
-</html>
-`
-
-type servePic struct {
-	Upload string
-	PicKey string
-	Anon bool
-}
-
-type shortToLong struct {
-	Owner string
-	Hash string
-}
-
-func pic(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	uploadURL, err := blobstore.UploadURL(c, "/upload", nil)
-	if err != nil {
-		serveError(c, w, err)
-		return
-	}
-	u := r.URL.String()
-	_, picName := path.Split(u)
-	k := datastore.NewKey(c, "shortKey", picName, 0, nil)
-	short := shortToLong{}
-	if err := datastore.Get(c, k, &short); err != nil {
-		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	//	key := r.FormValue("blobKey")
-	p := servePic{uploadURL.String(), short.Hash, isAnon(c)}
-	w.Header().Set("Content-Type", "text/html")
-	if err := picTemplate.Execute(w, p); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func upload(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	u := user.Current(c)
-	if u == nil {
-		url, err := user.LoginURL(c, "/")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Location", url)
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-	blobs, _, err := blobstore.ParseUpload(r)
-	if err != nil {
-//		serveError(c, w, err)
-		c.Errorf("%v", err)
-		// TODO(mpl): probably not a "StatusFound" that we want here
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	file := blobs["file"]
-	if len(file) == 0 {
-		c.Errorf("no file uploaded")
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	long := string(file[0].BlobKey)
-	h := md5.New()
-	_, err = io.WriteString(h, long)
-	if err != nil {
-		serveError(c, w, err)
-	}
-	short := fmt.Sprintf("%x", h.Sum(nil))
-	_, err = datastore.Put(c, datastore.NewKey(c, "shortKey", short, 0, nil), &shortToLong{u.String(), long})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	//	http.Redirect(w, r, "/pic/?blobKey="+string(file[0].BlobKey), http.StatusFound)
-	http.Redirect(w, r, "/pic/"+short, http.StatusFound)
-}
-
-var picsTemplate = template.Must(template.New("pics").Parse(picsHTML))
-
-const picsHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-	<title>ImgDump</title>
-</head>
-<body>
-	<div> <a href="/">home</a> <a href="/login">login</a> <a href="/logout">logout</a> </div>
-	<ul>
-	{{range .}} <li> <a href="pic/{{.}}"> {{.}} </li> {{end}}
-	</ul>
-</body>
-</html>
-`
-
-func allPics(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	u := user.Current(c)
-	if u == nil {
-		url, err := user.LoginURL(c, r.URL.String())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Location", url)
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-//	q := datastore.NewQuery("shortKey").Limit(10)
-	q := datastore.NewQuery("shortKey").Filter("Owner =", u.String())
-	longs := make([]shortToLong, 0, 10)
-	keys, err := q.GetAll(c, &longs)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	shorts := make([]string, 0, 1)
-	for _,v := range keys {
-		shorts = append(shorts, v.StringID())
-	}
-	
-	if err := picsTemplate.Execute(w, shorts); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-    }
 }
 
 */

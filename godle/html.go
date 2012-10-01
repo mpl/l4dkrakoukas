@@ -4,7 +4,7 @@ import (
 	"html/template"
 )
 
-var funcMap = template.FuncMap{ "toString": toString, }
+var funcMap = template.FuncMap{ "prettyDate": prettyDate, }
 
 var rootTemplate = template.Must(template.New("root").Funcs(funcMap).Parse(rootHTML))
 
@@ -29,15 +29,25 @@ const weekHTML = `
 	<title>l4dkrakoukas</title>
 </head>
 <body>
-Planning pour semaine {{.W.Date}}
-<form name="weekinput" action="/week/{{.W.Date}}" method="post">
+Planning pour semaine {{.Date | prettyDate }}
+<form name="weekinput" action="/week/{{.Date}}" method="post">
 <table>
-	{{range $player, $schedule := .Foo}}
+	<tr>
+		<th>Ptits Joueurs</th>
+		<th>Lundi</th>
+		<th>Mardi</th>
+		<th>Mercredi</th>
+		<th>Jeudi</th>
+		<th>Vendredi</th>
+		<th>Samedi</th>
+		<th>Dimanche</th>
+	</tr>
+	{{range $player, $days := .Schedule}}
 	<tr>
 		<td> {{$player}} </td>
-		{{range $day, $avail := $schedule}}
+		{{range $day, $avail := $days}}
 		<td>
-			<input type="checkbox" name={{$player}}day value={{$day | toString}}
+			<input type="checkbox" name={{$player}}days value={{$day}}
 			{{if $avail}} checked="true" {{end}}
 			>
 		</td>
@@ -50,14 +60,3 @@ Planning pour semaine {{.W.Date}}
 </body>
 </html>
 `
-
-/*
-	{{end}}
-	<tr>
-		<th>Ptits Joueurs</th>
-		<th>Vendredi</th>
-		<th>Samedi</th>
-		<th>Dimanche</th>
-	</tr>
-		<td><input type="checkbox" name="fooday" value={{.}}></td>
-*/
