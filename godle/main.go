@@ -2,12 +2,12 @@ package godle
 
 import (
 	"appengine"
-//	"appengine/blobstore"
+	//	"appengine/blobstore"
 	"appengine/datastore"
-//	"appengine/user"
-//	"crypto/md5"
+	//	"appengine/user"
+	//	"crypto/md5"
 	"fmt"
-//	"html/template"
+	//	"html/template"
 	"io"
 	"net/http"
 	"path"
@@ -18,35 +18,38 @@ import (
 
 // TODO: do it with bitfields?
 const (
-	monday = iota
-	tuesday = iota
+	monday    = iota
+	tuesday   = iota
 	wednesday = iota
-	thursday = iota
-	friday = iota
-	saturday = iota
-	sunday = iota
+	thursday  = iota
+	friday    = iota
+	saturday  = iota
+	sunday    = iota
+	noday     = iota
 )
 
 const (
-	Asticot = iota
+	Asticot      = iota
 	ChuckMaurice = iota
-	Posi = iota
-	Lagoule = iota
+	Posi         = iota
+	Lagoule      = iota
 )
 
 const defaultMaxMemory = 32 << 20 // 32 MB
 
 var (
-	weekdays = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+	weekdays   = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "noday"}
+// TODO: json input file for players
 	allPlayers = []string{"Asticot", "ChuckMaurice", "Posi", "Lagoule"}
-	allFalse = map[int]bool{
-		monday: false,
-		tuesday: false,
+	allFalse   = map[int]bool{
+		monday:    false,
+		tuesday:   false,
 		wednesday: false,
-		thursday: false,
-		friday: false,
-		saturday: false,
-		sunday: false,
+		thursday:  false,
+		friday:    false,
+		saturday:  false,
+		sunday:    false,
+		noday:     false,
 	}
 )
 
@@ -58,15 +61,14 @@ func prettyDate(date string) string {
 	return date[0:4] + ", " + date[4:6]
 }
 
-
 func init() {
 	http.HandleFunc("/", root)
 	http.HandleFunc("/week/", serveWeek)
 	http.HandleFunc("/newweek", newWeek)
-/*
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/logout", logout)
-*/
+	/*
+		http.HandleFunc("/login", login)
+		http.HandleFunc("/logout", logout)
+	*/
 }
 
 func serveError(c appengine.Context, w http.ResponseWriter, err error) {
@@ -86,12 +88,12 @@ func root(w http.ResponseWriter, r *http.Request) {
 // TODO: the Schedule in this one could probably be a big JSON string
 // derived from the Schedule in tplWeek
 type Week struct {
-	Date string
+	Date     string
 	Schedule []string
 }
 
 type tplWeek struct {
-	Date string
+	Date     string
 	Schedule map[string]map[int]bool
 }
 
@@ -123,7 +125,7 @@ func newWeek(w http.ResponseWriter, r *http.Request) {
 
 func serveWeek(w http.ResponseWriter, r *http.Request) {
 	_, weekId := path.Split(r.URL.String())
-//	println(weekId)
+	//	println(weekId)
 	if weekId == "" {
 		http.Error(w, "No week Id", http.StatusInternalServerError)
 		return
@@ -133,7 +135,7 @@ func serveWeek(w http.ResponseWriter, r *http.Request) {
 	week := Week{}
 	if err := datastore.Get(c, key, &week); err != nil {
 		// TODO: log this?
-//		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
+		//		http.Error(w, "Getting from the datastore: "+err.Error(), http.StatusInternalServerError)
 		http.Error(w, "Invalid week Id", http.StatusInternalServerError)
 		return
 	}
@@ -156,7 +158,7 @@ func serveWeek(w http.ResponseWriter, r *http.Request) {
 	for k, p := range allPlayers {
 		days := strings.Fields(week.Schedule[k])
 		okDays := map[int]bool{}
-		for i:=0; i<7; i++ {
+		for i := 0; i < len(allFalse); i++ {
 			okDays[i] = false
 		}
 		for _, sd := range days {
@@ -165,6 +167,14 @@ func serveWeek(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 			okDays[dd] = true
+			// set them all back to false if "noday" (unavailable all week) is ticked
+			if dd == noday {
+				for i := 0; i < len(allFalse); i++ {
+					okDays[i] = false
+				}
+				okDays[noday] = true
+				break
+			}
 		}
 		avail[p] = okDays
 	}

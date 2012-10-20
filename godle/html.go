@@ -4,7 +4,7 @@ import (
 	"html/template"
 )
 
-var funcMap = template.FuncMap{ "prettyDate": prettyDate, }
+var funcMap = template.FuncMap{"prettyDate": prettyDate}
 
 var rootTemplate = template.Must(template.New("root").Funcs(funcMap).Parse(rootHTML))
 
@@ -19,6 +19,7 @@ Nope
 </body>
 </html>
 `
+
 var weekTemplate = template.Must(template.New("week").Funcs(funcMap).Parse(weekHTML))
 
 // TODO: autogen?
@@ -41,6 +42,7 @@ Planning pour semaine {{.Date | prettyDate }}
 		<th>Vendredi</th>
 		<th>Samedi</th>
 		<th>Dimanche</th>
+		<th>Pas dispo</th>
 	</tr>
 	{{range $player, $days := .Schedule}}
 	<tr>
